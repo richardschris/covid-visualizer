@@ -9,7 +9,7 @@ cur = conn.cursor()
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-
+server = app.server
 
 COUNTRIES = '''
 SELECT id, name FROM country ORDER BY name;
@@ -56,7 +56,7 @@ def get_countries():
     cur.execute(COUNTRIES)
     return cur.fetchall()
 
-    
+
 data = get_country_data()
 graph_data = populate_graph_data(data)
 
@@ -85,7 +85,4 @@ def update_graph(country=99):
 
 
 if __name__ == '__main__':
-
-
-
     app.run_server(debug=True)
