@@ -56,32 +56,36 @@ def get_countries():
     cur.execute(COUNTRIES)
     return cur.fetchall()
 
+    
+data = get_country_data()
+graph_data = populate_graph_data(data)
+
+app.layout = html.Div(children=[
+    html.H1(children='COVID-19 Cases'),
+    dcc.Dropdown(
+        id='country-dropdown',
+        options=[
+            {'label': label, 'value': value} for value, label in get_countries() 
+        ],
+        value=99
+    ),
+    dcc.Graph(
+        id='covid-graph',
+        figure=graph_data
+    )
+])
+@app.callback(
+    dash.dependencies.Output('covid-graph', 'figure'),
+    [dash.dependencies.Input('country-dropdown', 'value')]
+)
+def update_graph(country=99):
+    data = get_country_data(country)
+    graph_data = populate_graph_data(data)
+    return graph_data
+
 
 if __name__ == '__main__':
-    data = get_country_data()
-    graph_data = populate_graph_data(data)
 
-    app.layout = html.Div(children=[
-        html.H1(children='COVID-19 Cases'),
-        dcc.Dropdown(
-            id='country-dropdown',
-            options=[
-                {'label': label, 'value': value} for value, label in get_countries() 
-            ],
-            value=99
-        ),
-        dcc.Graph(
-            id='covid-graph',
-            figure=graph_data
-        )
-    ])
-    @app.callback(
-        dash.dependencies.Output('covid-graph', 'figure'),
-        [dash.dependencies.Input('country-dropdown', 'value')]
-    )
-    def update_graph(country=99):
-        data = get_country_data(country)
-        graph_data = populate_graph_data(data)
-        return graph_data
+
 
     app.run_server(debug=True)
