@@ -12,7 +12,7 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
 COUNTRIES = '''
-SELECT id, name FROM country ORDER BY name;
+SELECT id, name FROM country WHERE id > 0 ORDER BY name;
 '''
 SELECT_BY_SUBDIVISION_DATA = '''
 SELECT day, positive_cases, deaths 
@@ -56,7 +56,6 @@ def get_countries():
     cur.execute(COUNTRIES)
     return cur.fetchall()
 
-
 data = get_country_data()
 graph_data = populate_graph_data(data)
 
@@ -72,7 +71,15 @@ app.layout = html.Div(children=[
     dcc.Graph(
         id='covid-graph',
         figure=graph_data
-    )
+    ),
+    html.Footer(children=[
+        'Data from ', 
+        html.A(children='Johns Hopkins', href="https://github.com/CSSEGISandData/COVID-19"), 
+        '. Code ',
+        html.A(children='here.', href="https://github.com/richardschris/covid-visualizer"),
+        ' Email me at the address in my github with questions/comments/concerns/complaints/kudos. Built with ',
+        html.A(href='https://plot.ly/dash/', children='Dash.')
+    ])
 ])
 @app.callback(
     dash.dependencies.Output('covid-graph', 'figure'),

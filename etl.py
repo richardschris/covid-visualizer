@@ -1,5 +1,6 @@
 import pandas as pd
 import psycopg2
+import numpy as np
 
 conn = psycopg2.connect(database='covid')
 cur = conn.cursor()
@@ -33,7 +34,6 @@ CREATE INDEX IF NOT EXISTS subdivision_idx ON subdivision (name);
 '''
 CREATE_CASES_TABLE = '''
 CREATE TABLE IF NOT EXISTS cases (
-    id SERIAL PRIMARY KEY,
     day DATE, 
     country INT REFERENCES country(id), 
     subdivision INT REFERENCES subdivision NULL, 
@@ -50,9 +50,13 @@ CREATE INDEX IF NOT EXISTS cases_idx ON cases (day)
 INSERT_COUNTRY = '''
 INSERT INTO country (name) VALUES (%s) ON CONFLICT DO NOTHING;
 '''
+INSERT_DUMMY_COUNTRY = '''
+INSERT INTO country (id, name) VALUES (0, null) ON CONFLICT DO NOTHING;
+'''
 INSERT_SUBDIVISION = '''
 INSERT INTO subdivision (name, country) VALUES (%s, %s) ON CONFLICT DO NOTHING;
 '''
+INSERT_DUMMY_SUBDIVISION = 'INSERT INTO subdivision (id, name, country) VALUES (0, null, 0) ON CONFLICT DO NOTHING'
 GET_COUNTRY = '''
 SELECT * FROM country WHERE name = %s;
 '''
@@ -67,9 +71,19 @@ cur.execute(CREATE_COUNTRY_TABLE)
 cur.execute(CREATE_SUBDIVISION_TABLE)
 cur.execute(CREATE_SUBDIVISION_INDEX)
 cur.execute(CREATE_COUNTRY_INDEX)
+cur.execute(INSERT_DUMMY_COUNTRY)
+cur.execute(INSERT_DUMMY_SUBDIVISION)
 cur.execute(CREATE_CASES_TABLE)
 cur.execute(CREATE_CASES_INDEX)
 conn.commit()
+
+
+# on 3/18 there were a bunch of NaN values
+def nan_to_int(val):
+    if isinstance(val, float):
+        return 0
+    else:
+        return int(val)
 
 for _, row in cases.iterrows():
     subdivision = row['Province/State']
@@ -95,12 +109,11 @@ for _, row in cases.iterrows():
         cur.execute(GET_COUNTRY, [country])
         country_id, _ = cur.fetchone()
 
-        subdivision_id = None
+        subdivision_id = 0  # dummy subdivision for unique constraint
 
     for date in dates:
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
         recovered_date = recovered_df.iloc[0][date]
-
-        cur.execute(INSERT_CASES, (date, country_id, subdivision_id, int(cases_date), int(deaths_date), int(recovered_date)))
+        cur.execute(INSERT_CASES, (date, country_id, subdivision_id, nan_to_int(cases_date), nan_to_int(deaths_date), nan_to_int(recovered_date)))
         conn.commit()
