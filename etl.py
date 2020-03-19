@@ -80,7 +80,7 @@ conn.commit()
 
 # on 3/18 there were a bunch of NaN values
 def nan_to_int(val):
-    if isinstance(val, float):
+    if val is np.nan:
         return 0
     else:
         return int(val)
@@ -115,5 +115,7 @@ for _, row in cases.iterrows():
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
         recovered_date = recovered_df.iloc[0][date]
+        if cases_date is np.nan:
+            continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
         cur.execute(INSERT_CASES, (date, country_id, subdivision_id, nan_to_int(cases_date), nan_to_int(deaths_date), nan_to_int(recovered_date)))
         conn.commit()
