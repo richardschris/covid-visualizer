@@ -2,14 +2,56 @@ import pandas as pd
 import psycopg2
 import numpy as np
 
-conn = psycopg2.connect(database='covid')
-cur = conn.cursor()
 
 cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv')
 deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv')
 recovered = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv')
 # dates start here
 dates = cases.columns[4:]
+
+# the dataset includes some county-level data we need to aggregate into the state level
+COUNTY_SUFFIXES = {
+    'HI': 'Hawaii',
+    'OR': 'Oregon',
+    'OK': 'Oklahoma',
+    'SD': 'South Dakota',
+    'PA': 'Pennsylvania',
+    'GA': 'Georgia',
+    'IN': 'Indiana',
+    'NM': 'New Mexico',
+    'SC': 'South Carolina',
+    'MN': 'Minnesota',
+    'IA': 'Iowa',
+    'CA': 'California',
+    'WI': 'Wisconsin',
+    'UT': 'Utah',
+    'CT': 'Connecticut',
+    'MI': 'Michigan',
+    'KY': 'Kentucky',
+    'OH': 'Ohio',
+    'KS': 'Kansas',
+    'MD': 'Maryland',
+    'CO': 'Colorado',
+    'TX': 'Texas',
+    'NH': 'New Hampshire',
+    'VT': 'Vermont',
+    'FL': 'Florida',
+    'DE': 'Delaware',
+    'LA': 'Louisiana',
+    'NE': 'Nebraska',
+    'AZ': 'Arizona',
+    'TN': 'Tennessee',
+    'VA': 'Virginia',
+    'IL': 'Illinois',
+    'RI': 'Rhode Island',
+    'MO': 'Missouri',
+    'WA': 'Washington',
+    'NV': 'Nevada',
+    'NC': 'North Carolina',
+    'MA': 'Massachusetts',
+    'NY': 'New York',
+    'NJ': 'New Jersey'
+}
 
 CREATE_COUNTRY_TABLE = '''
 CREATE TABLE IF NOT EXISTS country (
@@ -66,6 +108,27 @@ SELECT * FROM subdivision WHERE name = %s;
 INSERT_CASES = '''
 INSERT INTO cases (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
 '''
+INCREMENT_CASES = '''
+INSERT INTO cases 
+    (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) 
+    ON CONFLICT (day, country, subdivision) DO UPDATE SET 
+        positive_cases = cases.positive_cases + EXCLUDED.positive_cases,
+        deaths = cases.deaths + EXCLUDED.deaths,
+        recovered = cases.recovered + EXCLUDED.recovered;
+'''
+TRACKED_DATES_TABLE = '''
+CREATE TABLE IF NOT EXISTS tracked_dates (
+    id SERIAL PRIMARY KEY,
+    day DATE,
+    UNIQUE (day)
+);
+'''
+INSERT_TRACKED_DATE = '''
+INSERT INTO tracked_dates (day) VALUES (%s) ON CONFLICT DO NOTHING;
+'''
+
+conn = psycopg2.connect(database='covid')
+cur = conn.cursor()
 
 cur.execute(CREATE_COUNTRY_TABLE)
 cur.execute(CREATE_SUBDIVISION_TABLE)
@@ -75,6 +138,7 @@ cur.execute(INSERT_DUMMY_COUNTRY)
 cur.execute(INSERT_DUMMY_SUBDIVISION)
 cur.execute(CREATE_CASES_TABLE)
 cur.execute(CREATE_CASES_INDEX)
+cur.execute(TRACKED_DATES_TABLE)
 conn.commit()
 
 
@@ -88,16 +152,24 @@ def nan_to_int(val):
 for _, row in cases.iterrows():
     subdivision = row['Province/State']
     country = row['Country/Region']
-
+    increment_counter = False
     # fucking pandas
     if not isinstance(subdivision, float):
+
         deaths_df = deaths.loc[(deaths['Province/State'] == subdivision) & (deaths['Country/Region'] == country)]
         recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
+        subdivision = subdivision.strip()
+
         conn.commit()
+        if subdivision[-2:] in COUNTY_SUFFIXES:
+            sd = subdivision[-2:]
+            subdivision = COUNTY_SUFFIXES[sd]
+            increment_counter = True
         cur.execute(GET_COUNTRY, [country])
         country_id, _ = cur.fetchone()
-        cur.execute(INSERT_SUBDIVISION, (subdivision, country_id))
+        if not increment_counter:
+            cur.execute(INSERT_SUBDIVISION, (subdivision, country_id))
         conn.commit()
         cur.execute(GET_SUBDIVISION, [subdivision])
         subdivision_id, _, _ = cur.fetchone()
@@ -112,10 +184,40 @@ for _, row in cases.iterrows():
         subdivision_id = 0  # dummy subdivision for unique constraint
 
     for date in dates:
+        cur.execute('SELECT EXISTS (SELECT 1 FROM tracked_dates WHERE day=%s)', [date])
+        is_date_tracked = cur.fetchone()[0]
+        if is_date_tracked:
+            continue
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
         recovered_date = recovered_df.iloc[0][date]
+
         if cases_date is np.nan:
             continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
-        cur.execute(INSERT_CASES, (date, country_id, subdivision_id, nan_to_int(cases_date), nan_to_int(deaths_date), nan_to_int(recovered_date)))
+        if not increment_counter:
+            cur.execute(
+                INSERT_CASES, (
+                    date, 
+                    country_id, 
+                    subdivision_id, 
+                    nan_to_int(cases_date), 
+                    nan_to_int(deaths_date), 
+                    nan_to_int(recovered_date)
+                )
+            )
+        else:
+            cur.execute(
+                INCREMENT_CASES, (
+                    date, 
+                    country_id, 
+                    subdivision_id, 
+                    nan_to_int(cases_date), 
+                    nan_to_int(deaths_date), 
+                    nan_to_int(recovered_date)
+                )
+            )
         conn.commit()
+
+for date in dates:
+    cur.execute(INSERT_TRACKED_DATE, [date])
+    conn.commit()

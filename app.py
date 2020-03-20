@@ -11,12 +11,17 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 
+DEFAULT_COUNTRY = '''SELECT id FROM country WHERE name='US';'''
+
 COUNTRIES = '''
 SELECT id, name FROM country WHERE id > 0 ORDER BY name;
 '''
+SUBDIVISIONS = '''
+SELECT id, name FROM subdivision WHERE id > 0 AND country = %s ORDER BY name;
+'''
 SELECT_BY_SUBDIVISION_DATA = '''
-SELECT day, positive_cases, deaths 
-    FROM cases a INNER JOIN subdivision b ON a.subdivision = b.id WHERE b.name = 'Hubei'
+SELECT day, positive_cases, deaths, recovered
+    FROM cases WHERE subdivision=%s
     ORDER BY day ASC;
 '''
 SELECT_BY_COUNTRY_DATA = '''
@@ -25,6 +30,10 @@ SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) 
     GROUP BY day
     ORDER BY day;
 '''
+
+def get_default_country():
+    cur.execute(DEFAULT_COUNTRY)
+    return cur.fetchone()[0]
 
 def get_country_data(country=99):
     cur.execute(SELECT_BY_COUNTRY_DATA, [country])
@@ -39,6 +48,33 @@ def get_country_data(country=99):
     ]
     return data
 
+
+def get_subdivisions(country=100):
+    empty_choice = [(0, 'None')]
+    cur.execute(SUBDIVISIONS, [country])
+    subdivisions = cur.fetchall()
+    if not subdivisions:
+        subdivisions = []
+    
+    empty_choice.extend(subdivisions)
+    foo = [{'label': label, 'value': value} for value, label in empty_choice]
+    return foo
+
+
+def get_subdivision_data(subdivision):
+    cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
+    cases = cur.fetchall()
+    data = [
+        {
+            'cases': cases_day, 
+            'deaths': deaths_day, 
+            'day': day, 
+            'recovered': recovered_day}
+         for day, cases_day, deaths_day, recovered_day in cases
+    ]
+    return data
+
+
 def populate_graph_data(data):
     cases_y = [day['cases'] for day in data]
     deaths_y = [day['deaths'] for day in data]
@@ -52,9 +88,11 @@ def populate_graph_data(data):
             ]
         }
 
+
 def get_countries():
     cur.execute(COUNTRIES)
     return cur.fetchall()
+
 
 data = get_country_data()
 graph_data = populate_graph_data(data)
@@ -66,7 +104,12 @@ app.layout = html.Div(children=[
         options=[
             {'label': label, 'value': value} for value, label in get_countries() 
         ],
-        value=99
+        value=get_default_country()
+    ),
+    dcc.Dropdown(
+        id='subdivision-dropdown',
+        options=get_subdivisions(),
+        value=None
     ),
     dcc.Graph(
         id='covid-graph',
@@ -81,14 +124,43 @@ app.layout = html.Div(children=[
         html.A(href='https://plot.ly/dash/', children='Dash.')
     ])
 ])
+
+
 @app.callback(
     dash.dependencies.Output('covid-graph', 'figure'),
-    [dash.dependencies.Input('country-dropdown', 'value')]
+    [
+        dash.dependencies.Input('country-dropdown', 'value'),
+        dash.dependencies.Input('subdivision-dropdown', 'value')
+    ]
 )
-def update_graph(country=99):
-    data = get_country_data(country)
+def update_graph(country=100, subdivision=None):
+    if subdivision:
+        data = get_subdivision_data(subdivision)
+    else:
+        data = get_country_data(country)
     graph_data = populate_graph_data(data)
     return graph_data
+
+
+@app.callback(
+    dash.dependencies.Output('subdivision-dropdown', 'options'),
+    [
+        dash.dependencies.Input('country-dropdown', 'value')
+    ]
+)
+def update_state_dropdown(country=100):
+    values = get_subdivisions(country)
+    return values
+
+
+@app.callback(
+    dash.dependencies.Output('subdivision-dropdown', 'value'),
+    [
+        dash.dependencies.Input('country-dropdown', 'value')
+    ]
+)
+def reset_state_dropdown(*args, **kwargs):
+    return None
 
 
 if __name__ == '__main__':
