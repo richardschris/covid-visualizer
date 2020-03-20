@@ -10,6 +10,10 @@ pandas = "*"
 ipython = "*"
 psycopg2 = "*"
 dash = "*"
+gunicorn = "*"
 
 [requires]
 python_version = "3.6"
+
+[scripts]
+etl = "python etl.py"
