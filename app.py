@@ -85,14 +85,26 @@ def populate_graph_data(data):
                 {'x': x, 'y': cases_y, 'type': 'line', 'name': 'Cases'},
                 {'x': x, 'y': deaths_y, 'type': 'line', 'name': 'Deaths'},
                 {'x': x, 'y': recovered_y, 'type': 'line', 'name': 'Recovered'},
-            ]
+            ],
         }
 
 
 def get_countries():
     cur.execute(COUNTRIES)
-    return cur.fetchall()
+    return [
+        {'label': label, 'value': value} for value, label in cur.fetchall()
+    ]
+     
 
+
+footer = [
+    'Data from ', 
+    html.A(children='Johns Hopkins', href="https://github.com/CSSEGISandData/COVID-19"), 
+    '. Code ',
+    html.A(children='here.', href="https://github.com/richardschris/covid-visualizer"),
+    ' Email me at the address in my github with questions/comments/concerns/complaints/kudos. Built with ',
+    html.A(href='https://plot.ly/dash/', children='Dash.')
+]
 
 data = get_country_data()
 graph_data = populate_graph_data(data)
@@ -101,9 +113,7 @@ app.layout = html.Div(children=[
     html.H1(children='COVID-19 Cases'),
     dcc.Dropdown(
         id='country-dropdown',
-        options=[
-            {'label': label, 'value': value} for value, label in get_countries() 
-        ],
+        options=get_countries(),
         value=get_default_country()
     ),
     dcc.Dropdown(
@@ -115,14 +125,7 @@ app.layout = html.Div(children=[
         id='covid-graph',
         figure=graph_data
     ),
-    html.Footer(children=[
-        'Data from ', 
-        html.A(children='Johns Hopkins', href="https://github.com/CSSEGISandData/COVID-19"), 
-        '. Code ',
-        html.A(children='here.', href="https://github.com/richardschris/covid-visualizer"),
-        ' Email me at the address in my github with questions/comments/concerns/complaints/kudos. Built with ',
-        html.A(href='https://plot.ly/dash/', children='Dash.')
-    ])
+    html.Footer(children=footer)
 ])
 
 
