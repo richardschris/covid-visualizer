@@ -20,12 +20,12 @@ SUBDIVISIONS = '''
 SELECT id, name FROM subdivision WHERE id > 0 AND country = %s ORDER BY name;
 '''
 SELECT_BY_SUBDIVISION_DATA = '''
-SELECT day, positive_cases, deaths, recovered
+SELECT day, positive_cases, deaths
     FROM cases WHERE subdivision=%s
     ORDER BY day ASC;
 '''
 SELECT_BY_COUNTRY_DATA = '''
-SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
+SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths
     FROM cases a INNER JOIN country b on a.country = b.id WHERE b.id = %s
     GROUP BY day
     ORDER BY day;
@@ -42,9 +42,8 @@ def get_country_data(country=99):
         {
             'cases': cases_day, 
             'deaths': deaths_day, 
-            'day': day, 
-            'recovered': recovered_day}
-         for day, cases_day, deaths_day, recovered_day in cases
+            'day': day}
+         for day, cases_day, deaths_day in cases
     ]
     return data
 
@@ -69,8 +68,8 @@ def get_subdivision_data(subdivision):
             'cases': cases_day, 
             'deaths': deaths_day, 
             'day': day, 
-            'recovered': recovered_day}
-         for day, cases_day, deaths_day, recovered_day in cases
+        }
+         for day, cases_day, deaths_day in cases
     ]
     return data
 
@@ -78,13 +77,11 @@ def get_subdivision_data(subdivision):
 def populate_graph_data(data):
     cases_y = [day['cases'] for day in data]
     deaths_y = [day['deaths'] for day in data]
-    recovered_y = [day['recovered'] for day in data]
     x = [day['day'] for day in data]
     return {
         'data': [
                 {'x': x, 'y': cases_y, 'type': 'line', 'name': 'Cases'},
                 {'x': x, 'y': deaths_y, 'type': 'line', 'name': 'Deaths'},
-                {'x': x, 'y': recovered_y, 'type': 'line', 'name': 'Recovered'},
             ],
         }
 

@@ -3,9 +3,9 @@ import psycopg2
 import numpy as np
 
 
-cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv')
-deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv')
-recovered = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv')
+cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv')
+deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv')
+# recovered = pd.rea?d_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv')
 # dates start here
 dates = cases.columns[4:]
 
@@ -106,15 +106,14 @@ GET_SUBDIVISION = '''
 SELECT * FROM subdivision WHERE name = %s;
 '''
 INSERT_CASES = '''
-INSERT INTO cases (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+INSERT INTO cases (day, country, subdivision, positive_cases, deaths) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
 '''
 INCREMENT_CASES = '''
 INSERT INTO cases 
-    (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) 
+    (day, country, subdivision, positive_cases, deaths) VALUES (%s, %s, %s, %s, %s) 
     ON CONFLICT (day, country, subdivision) DO UPDATE SET 
         positive_cases = cases.positive_cases + EXCLUDED.positive_cases,
-        deaths = cases.deaths + EXCLUDED.deaths,
-        recovered = cases.recovered + EXCLUDED.recovered;
+        deaths = cases.deaths + EXCLUDED.deaths;
 '''
 TRACKED_DATES_TABLE = '''
 CREATE TABLE IF NOT EXISTS tracked_dates (
@@ -144,10 +143,11 @@ conn.commit()
 
 # on 3/18 there were a bunch of NaN values
 def nan_to_int(val):
-    if val is np.nan:
+    if val is np.nan or isinstance(val, float):
         return 0
     else:
         return int(val)
+
 
 for _, row in cases.iterrows():
     subdivision = row['Province/State']
@@ -157,7 +157,7 @@ for _, row in cases.iterrows():
     if not isinstance(subdivision, float):
 
         deaths_df = deaths.loc[(deaths['Province/State'] == subdivision) & (deaths['Country/Region'] == country)]
-        recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
+        # recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         subdivision = subdivision.strip()
 
@@ -175,7 +175,7 @@ for _, row in cases.iterrows():
         subdivision_id, _, _ = cur.fetchone()
     else:
         deaths_df = deaths.loc[(deaths['Province/State'].isnull()) & (deaths['Country/Region'] == country)]
-        recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
+        # recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         conn.commit()
         cur.execute(GET_COUNTRY, [country])
@@ -190,7 +190,7 @@ for _, row in cases.iterrows():
             continue
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
-        recovered_date = recovered_df.iloc[0][date]
+        # recovered_date = recovered_df.iloc[0][date]
 
         if cases_date is np.nan:
             continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
@@ -202,7 +202,7 @@ for _, row in cases.iterrows():
                     subdivision_id, 
                     nan_to_int(cases_date), 
                     nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date)
+                    # nan_to_int(recovered_date)
                 )
             )
         else:
@@ -213,7 +213,7 @@ for _, row in cases.iterrows():
                     subdivision_id, 
                     nan_to_int(cases_date), 
                     nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date)
+                    # nan_to_int(recovered_date)
                 )
             )
         conn.commit()
