@@ -20,12 +20,12 @@ SUBDIVISIONS = '''
 SELECT id, name FROM subdivision WHERE id > 0 AND country = %s ORDER BY name;
 '''
 SELECT_BY_SUBDIVISION_DATA = '''
-SELECT day, positive_cases, deaths
+SELECT day, positive_cases, deaths, recovered
     FROM cases WHERE subdivision=%s
     ORDER BY day ASC;
 '''
 SELECT_BY_COUNTRY_DATA = '''
-SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths
+SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
     FROM cases a INNER JOIN country b on a.country = b.id WHERE b.id = %s
     GROUP BY day
     ORDER BY day;
@@ -42,8 +42,9 @@ def get_country_data(country=99):
         {
             'cases': cases_day, 
             'deaths': deaths_day, 
-            'day': day}
-         for day, cases_day, deaths_day in cases
+            'recovered': recovered_day,
+            'day': day
+        } for day, cases_day, deaths_day, recovered_day in cases
     ]
     return data
 
@@ -67,9 +68,10 @@ def get_subdivision_data(subdivision):
         {
             'cases': cases_day, 
             'deaths': deaths_day, 
+            'recovered': recovered_day,
             'day': day, 
         }
-         for day, cases_day, deaths_day in cases
+         for day, cases_day, deaths_day, recovered_day in cases
     ]
     return data
 
@@ -105,6 +107,7 @@ footer = [
 
 data = get_country_data()
 graph_data = populate_graph_data(data)
+app.title = 'COVID-19 Charts'
 
 app.layout = html.Div(children=[
     html.H1(children='COVID-19 Cases'),

@@ -5,7 +5,7 @@ import numpy as np
 
 cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv')
 deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv')
-# recovered = pd.rea?d_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv')
+recovered = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv')
 # dates start here
 dates = cases.columns[4:]
 
@@ -106,14 +106,15 @@ GET_SUBDIVISION = '''
 SELECT * FROM subdivision WHERE name = %s;
 '''
 INSERT_CASES = '''
-INSERT INTO cases (day, country, subdivision, positive_cases, deaths) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+INSERT INTO cases (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
 '''
 INCREMENT_CASES = '''
 INSERT INTO cases 
-    (day, country, subdivision, positive_cases, deaths) VALUES (%s, %s, %s, %s, %s) 
+    (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) 
     ON CONFLICT (day, country, subdivision) DO UPDATE SET 
         positive_cases = cases.positive_cases + EXCLUDED.positive_cases,
-        deaths = cases.deaths + EXCLUDED.deaths;
+        deaths = cases.deaths + EXCLUDED.deaths,
+        recovered = cases.recovered + EXCLUDED.recovered;
 '''
 TRACKED_DATES_TABLE = '''
 CREATE TABLE IF NOT EXISTS tracked_dates (
@@ -141,6 +142,9 @@ cur.execute(TRACKED_DATES_TABLE)
 conn.commit()
 
 
+inconsistent_recovered_subdivision_data_countries = set()
+
+
 # on 3/18 there were a bunch of NaN values
 def nan_to_int(val):
     if val is np.nan or isinstance(val, float):
@@ -157,7 +161,7 @@ for _, row in cases.iterrows():
     if not isinstance(subdivision, float):
 
         deaths_df = deaths.loc[(deaths['Province/State'] == subdivision) & (deaths['Country/Region'] == country)]
-        # recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
+        recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         subdivision = subdivision.strip()
 
@@ -175,7 +179,7 @@ for _, row in cases.iterrows():
         subdivision_id, _, _ = cur.fetchone()
     else:
         deaths_df = deaths.loc[(deaths['Province/State'].isnull()) & (deaths['Country/Region'] == country)]
-        # recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
+        recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         conn.commit()
         cur.execute(GET_COUNTRY, [country])
@@ -184,14 +188,18 @@ for _, row in cases.iterrows():
         subdivision_id = 0  # dummy subdivision for unique constraint
 
     for date in dates:
+        exclude_recoveries = False
         cur.execute('SELECT EXISTS (SELECT 1 FROM tracked_dates WHERE day=%s)', [date])
         is_date_tracked = cur.fetchone()[0]
         if is_date_tracked:
             continue
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
-        # recovered_date = recovered_df.iloc[0][date]
-
+        try:
+            # some countries don't have subdivision recoveries data -- we ignore these countries for now
+            recovered_date = recovered_df.iloc[0][date]
+        except:            
+            exclude_recoveries = True
         if cases_date is np.nan:
             continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
         if not increment_counter:
@@ -202,7 +210,7 @@ for _, row in cases.iterrows():
                     subdivision_id, 
                     nan_to_int(cases_date), 
                     nan_to_int(deaths_date), 
-                    # nan_to_int(recovered_date)
+                    nan_to_int(recovered_date) if not exclude_recoveries else 0
                 )
             )
         else:
@@ -213,7 +221,7 @@ for _, row in cases.iterrows():
                     subdivision_id, 
                     nan_to_int(cases_date), 
                     nan_to_int(deaths_date), 
-                    # nan_to_int(recovered_date)
+                    nan_to_int(recovered_date) if not exclude_recoveries else 0
                 )
             )
         conn.commit()
