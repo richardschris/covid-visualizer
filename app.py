@@ -79,11 +79,13 @@ def get_subdivision_data(subdivision):
 def populate_graph_data(data):
     cases_y = [day['cases'] for day in data]
     deaths_y = [day['deaths'] for day in data]
+    recovered_y = [day['recovered'] for day in data]
     x = [day['day'] for day in data]
     return {
         'data': [
                 {'x': x, 'y': cases_y, 'type': 'line', 'name': 'Cases'},
                 {'x': x, 'y': deaths_y, 'type': 'line', 'name': 'Deaths'},
+                {'x': x, 'y': recovered_y, 'type': 'line', 'name': 'Recovered'}
             ],
         }
 
