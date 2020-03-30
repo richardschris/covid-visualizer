@@ -195,7 +195,6 @@ for _, row in cases.iterrows():
         conn.commit()
         cur.execute(GET_SUBDIVISION_BY_NAME, [subdivision])
         subdivision_id, _, _, _ = cur.fetchone()
-        print(subdivision_id)
         inserted_subdivision = True
     else:
         deaths_df = deaths.loc[(deaths['Province/State'].isnull()) & (deaths['Country/Region'] == country)]
@@ -210,13 +209,12 @@ for _, row in cases.iterrows():
     increment_counter = False
     for date in dates:
         if not inserted_subdivision:
+            # Insert the data that has been broken out into the daily reports
             if country in country_codes_to_reports and date in country_codes_to_reports[country]:
                 subdivisions = country_codes_to_reports[country][date]
                 for _subdivision in subdivisions:
                     cur.execute(GET_COUNTRY, [country])
                     country_id, _ = cur.fetchone()
-                    # if not increment_counter:
-                    #     cur.execute(INSERT_SUBDIVISION, (_subdivision.county, _subdivision.state, country_id))
                     print(f'Creating subdivision for country {country}')
                     if not _subdivision.province and not _subdivision.subdivision:
                         continue
