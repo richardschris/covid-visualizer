@@ -16,14 +16,22 @@ DEFAULT_COUNTRY = '''SELECT id FROM country WHERE name='US';'''
 COUNTRIES = '''
 SELECT id, name FROM country WHERE id > 0 ORDER BY name;
 '''
-SUBDIVISIONS = '''
-SELECT id, name FROM subdivision WHERE id > 0 AND country = %s ORDER BY name;
+
+PROVINCES = '''
+SELECT DISTINCT on (province) province, id FROM subdivision WHERE id > 0 AND country = %s ORDER BY province;
 '''
+
+SUBDIVISIONS = '''
+select name, id from subdivision where province = (select province from subdivision where id = %s)
+and name <> '';
+'''
+
 SELECT_BY_SUBDIVISION_DATA = '''
 SELECT day, positive_cases, deaths, recovered
     FROM cases WHERE subdivision=%s
     ORDER BY day ASC;
 '''
+
 SELECT_BY_COUNTRY_DATA = '''
 SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
     FROM cases a INNER JOIN country b on a.country = b.id WHERE b.id = %s
@@ -49,19 +57,33 @@ def get_country_data(country=99):
     return data
 
 
-def get_subdivisions(country=100):
-    empty_choice = [(0, 'None')]
-    cur.execute(SUBDIVISIONS, [country])
+def get_provinces(country=100):
+    empty_choice = [('None', 0)]
+    cur.execute(PROVINCES, [country])
+    province = cur.fetchall()
+    print(f'Getting All Provinces for country {country}')
+    if not province:
+        province = []
+    
+    empty_choice.extend(province)
+    foo = [{'label': label, 'value': value} for label, value in empty_choice]
+    return foo
+
+def get_subdivisions(province = 0):
+    empty_choice = [('None', 0)]
+    cur.execute(SUBDIVISIONS, [province])
     subdivisions = cur.fetchall()
+    print(f'Getting All Subdivisions for province {province}')
     if not subdivisions:
         subdivisions = []
     
     empty_choice.extend(subdivisions)
-    foo = [{'label': label, 'value': value} for value, label in empty_choice]
+    foo = [{'label': label, 'value': value} for label, value in empty_choice]
     return foo
 
 
 def get_subdivision_data(subdivision):
+    print(f'Getting Subdivision Data {subdivision}')
     cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
     cases = cur.fetchall()
     data = [
@@ -119,6 +141,11 @@ app.layout = html.Div(children=[
         value=get_default_country()
     ),
     dcc.Dropdown(
+        id='province-dropdown',
+        options=get_provinces(),
+        value=None
+    ),
+    dcc.Dropdown(
         id='subdivision-dropdown',
         options=get_subdivisions(),
         value=None
@@ -135,10 +162,11 @@ app.layout = html.Div(children=[
     dash.dependencies.Output('covid-graph', 'figure'),
     [
         dash.dependencies.Input('country-dropdown', 'value'),
+        dash.dependencies.Input('province-dropdown', 'value'),
         dash.dependencies.Input('subdivision-dropdown', 'value')
     ]
 )
-def update_graph(country=100, subdivision=None):
+def update_graph(country=100, province=None, subdivision=None):
     if subdivision:
         data = get_subdivision_data(subdivision)
     else:
@@ -148,25 +176,44 @@ def update_graph(country=100, subdivision=None):
 
 
 @app.callback(
-    dash.dependencies.Output('subdivision-dropdown', 'options'),
+    dash.dependencies.Output('province-dropdown', 'options'),
     [
         dash.dependencies.Input('country-dropdown', 'value')
     ]
 )
-def update_state_dropdown(country=100):
-    values = get_subdivisions(country)
+def update_provinces_dropdown(country=100):
+    values = get_provinces(country)
     return values
 
 
 @app.callback(
-    dash.dependencies.Output('subdivision-dropdown', 'value'),
+    dash.dependencies.Output('province-dropdown', 'value'),
     [
         dash.dependencies.Input('country-dropdown', 'value')
     ]
 )
-def reset_state_dropdown(*args, **kwargs):
+def reset_provinces_dropdown(*args, **kwargs):
     return None
 
+
+@app.callback(
+    dash.dependencies.Output('subdivision-dropdown', 'options'),
+    [
+        dash.dependencies.Input('province-dropdown', 'value')
+    ]
+)
+def update_subdivisions_dropdown(subdivision = 0):
+    values = get_subdivisions(subdivision)
+    return values
+
+@app.callback(
+    dash.dependencies.Output('subdivision-dropdown', 'value'),
+    [
+        dash.dependencies.Input('province-dropdown', 'value')
+    ]
+)
+def reset_subdivisions_dropdown(*args, **kwargs):
+    return None
 
 if __name__ == '__main__':
     app.run_server(debug=True)

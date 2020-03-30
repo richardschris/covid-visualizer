@@ -1,6 +1,10 @@
 import pandas as pd
 import psycopg2
 import numpy as np
+import os
+import math
+
+from DailyReport import DailyReport, ReportBuilder
 
 
 cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv')
@@ -8,6 +12,13 @@ deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/t
 recovered = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv')
 # dates start here
 dates = cases.columns[4:]
+
+
+us_country_data_dir = '../COVID-19/csse_covid_19_data/csse_covid_19_daily_reports'
+
+
+country_codes_to_reports = ReportBuilder().parse(us_country_data_dir)
+
 
 # the dataset includes some county-level data we need to aggregate into the state level
 COUNTY_SUFFIXES = {
@@ -67,8 +78,9 @@ CREATE_SUBDIVISION_TABLE = '''
 CREATE TABLE IF NOT EXISTS subdivision (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
+    province VARCHAR(100),
     country INT REFERENCES country(id),
-    UNIQUE(name, country)
+    UNIQUE(name, country, province)
 )
 '''
 CREATE_SUBDIVISION_INDEX = '''
@@ -96,15 +108,21 @@ INSERT_DUMMY_COUNTRY = '''
 INSERT INTO country (id, name) VALUES (0, null) ON CONFLICT DO NOTHING;
 '''
 INSERT_SUBDIVISION = '''
-INSERT INTO subdivision (name, country) VALUES (%s, %s) ON CONFLICT DO NOTHING;
+INSERT INTO subdivision (name, province, country) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING;
 '''
 INSERT_DUMMY_SUBDIVISION = 'INSERT INTO subdivision (id, name, country) VALUES (0, null, 0) ON CONFLICT DO NOTHING'
+
 GET_COUNTRY = '''
 SELECT * FROM country WHERE name = %s;
 '''
-GET_SUBDIVISION = '''
+GET_SUBDIVISION_BY_NAME = '''
 SELECT * FROM subdivision WHERE name = %s;
 '''
+
+GET_SUBDIVISION_BY_NAME_AND_PROVIDENCE = '''
+SELECT * FROM subdivision WHERE name = %s and province = %s;
+'''
+
 INSERT_CASES = '''
 INSERT INTO cases (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
 '''
@@ -152,14 +170,14 @@ def nan_to_int(val):
     else:
         return int(val)
 
-
 for _, row in cases.iterrows():
     subdivision = row['Province/State']
     country = row['Country/Region']
     increment_counter = False
     # fucking pandas
-    if not isinstance(subdivision, float):
-
+    # The subdivisions here will work for any data that has not been broken out into the daily reports
+    inserted_subdivision = False
+    if isinstance(subdivision, str):
         deaths_df = deaths.loc[(deaths['Province/State'] == subdivision) & (deaths['Country/Region'] == country)]
         recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
@@ -173,10 +191,11 @@ for _, row in cases.iterrows():
         cur.execute(GET_COUNTRY, [country])
         country_id, _ = cur.fetchone()
         if not increment_counter:
-            cur.execute(INSERT_SUBDIVISION, (subdivision, country_id))
+            cur.execute(INSERT_SUBDIVISION, (subdivision, '', country_id))
         conn.commit()
-        cur.execute(GET_SUBDIVISION, [subdivision])
-        subdivision_id, _, _ = cur.fetchone()
+        cur.execute(GET_SUBDIVISION_BY_NAME, [subdivision])
+        subdivision_id, _, _, _ = cur.fetchone()
+        inserted_subdivision = True
     else:
         deaths_df = deaths.loc[(deaths['Province/State'].isnull()) & (deaths['Country/Region'] == country)]
         recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
@@ -187,44 +206,92 @@ for _, row in cases.iterrows():
 
         subdivision_id = 0  # dummy subdivision for unique constraint
 
+    increment_counter = False
     for date in dates:
-        exclude_recoveries = False
-        cur.execute('SELECT EXISTS (SELECT 1 FROM tracked_dates WHERE day=%s)', [date])
-        is_date_tracked = cur.fetchone()[0]
-        if is_date_tracked:
-            continue
-        cases_date = row[date]
-        deaths_date = deaths_df.iloc[0][date]
-        try:
-            # some countries don't have subdivision recoveries data -- we ignore these countries for now
-            recovered_date = recovered_df.iloc[0][date]
-        except:            
-            exclude_recoveries = True
-        if cases_date is np.nan:
-            continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
-        if not increment_counter:
-            cur.execute(
-                INSERT_CASES, (
-                    date, 
-                    country_id, 
-                    subdivision_id, 
-                    nan_to_int(cases_date), 
-                    nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date) if not exclude_recoveries else 0
-                )
-            )
+        if not inserted_subdivision:
+            # Insert the data that has been broken out into the daily reports
+            if country in country_codes_to_reports and date in country_codes_to_reports[country]:
+                subdivisions = country_codes_to_reports[country][date]
+                for _subdivision in subdivisions:
+                    cur.execute(GET_COUNTRY, [country])
+                    country_id, _ = cur.fetchone()
+                    print(f'Creating subdivision for country {country}')
+                    if not _subdivision.province and not _subdivision.subdivision:
+                        continue
+                    else:
+                        print(f'Inserting Subdivision {_subdivision.subdivision} - {_subdivision.province}')
+                        cur.execute(INSERT_SUBDIVISION, (_subdivision.subdivision, _subdivision.province, country_id))
+                    conn.commit()
+                    cur.execute(GET_SUBDIVISION_BY_NAME_AND_PROVIDENCE, [_subdivision.subdivision, _subdivision.province])
+                    subdivision_id, _, _, _ = cur.fetchone()
+                    exclude_recoveries = False
+                    cur.execute('SELECT EXISTS (SELECT 1 FROM tracked_dates WHERE day=%s)', [date])
+                    is_date_tracked = cur.fetchone()[0]
+                    if is_date_tracked:
+                        continue
+                    if cases_date is np.nan:
+                        continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
+                    if not increment_counter:
+                        cur.execute(
+                            INSERT_CASES, (
+                                date, 
+                                country_id, 
+                                subdivision_id, 
+                                nan_to_int(_subdivision.confirmed), 
+                                nan_to_int(_subdivision.deaths), 
+                                nan_to_int(_subdivision.recovered)
+                            )
+                        )
+                    else:
+                        cur.execute(
+                            INCREMENT_CASES, (
+                                date, 
+                                country_id, 
+                                subdivision_id, 
+                                nan_to_int(_subdivision.confirmed), 
+                                nan_to_int(_subdivision.deaths), 
+                                nan_to_int(_subdivision.recovered)
+                            )
+                        )
+                    conn.commit()
         else:
-            cur.execute(
-                INCREMENT_CASES, (
-                    date, 
-                    country_id, 
-                    subdivision_id, 
-                    nan_to_int(cases_date), 
-                    nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date) if not exclude_recoveries else 0
+            exclude_recoveries = False
+            cur.execute('SELECT EXISTS (SELECT 1 FROM tracked_dates WHERE day=%s)', [date])
+            is_date_tracked = cur.fetchone()[0]
+            if is_date_tracked:
+                continue
+            cases_date = row[date]
+            deaths_date = deaths_df.iloc[0][date]
+            try:
+                # some countries don't have subdivision recoveries data -- we ignore these countries for now
+                recovered_date = recovered_df.iloc[0][date]
+            except:            
+                exclude_recoveries = True
+            if cases_date is np.nan:
+                continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
+            if not increment_counter:
+                cur.execute(
+                    INSERT_CASES, (
+                        date, 
+                        country_id, 
+                        subdivision_id, 
+                        nan_to_int(cases_date), 
+                        nan_to_int(deaths_date), 
+                        nan_to_int(recovered_date) if not exclude_recoveries else 0
+                    )
                 )
-            )
-        conn.commit()
+            else:
+                cur.execute(
+                    INCREMENT_CASES, (
+                        date, 
+                        country_id, 
+                        subdivision_id, 
+                        nan_to_int(cases_date), 
+                        nan_to_int(deaths_date), 
+                        nan_to_int(recovered_date) if not exclude_recoveries else 0
+                    )
+                )
+            conn.commit()
 
 for date in dates:
     cur.execute(INSERT_TRACKED_DATE, [date])
