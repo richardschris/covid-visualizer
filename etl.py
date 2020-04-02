@@ -2,63 +2,22 @@ import pandas as pd
 import psycopg2
 import numpy as np
 
+DataFrame = pd.DataFrame
 
 cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv')
 deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv')
 recovered = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv')
+
 # dates start here
 dates = cases.columns[4:]
 
-# the dataset includes some county-level data we need to aggregate into the state level
-COUNTY_SUFFIXES = {
-    'HI': 'Hawaii',
-    'OR': 'Oregon',
-    'OK': 'Oklahoma',
-    'SD': 'South Dakota',
-    'PA': 'Pennsylvania',
-    'GA': 'Georgia',
-    'IN': 'Indiana',
-    'NM': 'New Mexico',
-    'SC': 'South Carolina',
-    'MN': 'Minnesota',
-    'IA': 'Iowa',
-    'CA': 'California',
-    'WI': 'Wisconsin',
-    'UT': 'Utah',
-    'CT': 'Connecticut',
-    'MI': 'Michigan',
-    'KY': 'Kentucky',
-    'OH': 'Ohio',
-    'KS': 'Kansas',
-    'MD': 'Maryland',
-    'CO': 'Colorado',
-    'TX': 'Texas',
-    'NH': 'New Hampshire',
-    'VT': 'Vermont',
-    'FL': 'Florida',
-    'DE': 'Delaware',
-    'LA': 'Louisiana',
-    'NE': 'Nebraska',
-    'AZ': 'Arizona',
-    'TN': 'Tennessee',
-    'VA': 'Virginia',
-    'IL': 'Illinois',
-    'RI': 'Rhode Island',
-    'MO': 'Missouri',
-    'WA': 'Washington',
-    'NV': 'Nevada',
-    'NC': 'North Carolina',
-    'MA': 'Massachusetts',
-    'NY': 'New York',
-    'NJ': 'New Jersey'
-}
 
 CREATE_COUNTRY_TABLE = '''
 CREATE TABLE IF NOT EXISTS country (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
     UNIQUE(name)
-)
+);
 '''
 CREATE_COUNTRY_INDEX = '''
 CREATE INDEX IF NOT EXISTS country_idx ON country (name);
@@ -69,53 +28,85 @@ CREATE TABLE IF NOT EXISTS subdivision (
     name VARCHAR(100),
     country INT REFERENCES country(id),
     UNIQUE(name, country)
-)
+);
+'''
+CREATE_COUNTY_TABLE = '''
+CREATE TABLE IF NOT EXISTS county (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100),
+    subdivision INT REFERENCES subdivision(id),
+    UNIQUE(name, subdivision)
+);
 '''
 CREATE_SUBDIVISION_INDEX = '''
 CREATE INDEX IF NOT EXISTS subdivision_idx ON subdivision (name);
+'''
+CREATE_COUNTY_INDEX = '''
+CREATE INDEX IF NOT EXISTS county_idx ON county (name);
 '''
 CREATE_CASES_TABLE = '''
 CREATE TABLE IF NOT EXISTS cases (
     day DATE, 
     country INT REFERENCES country(id), 
     subdivision INT REFERENCES subdivision NULL, 
+    county INT REFERENCES county NULL,
     positive_cases INT, 
     deaths INT,
     recovered INT,
-    UNIQUE (day, country, subdivision)
+    UNIQUE (day, country, subdivision, county)
 );
 '''
 CREATE_CASES_INDEX = '''
-CREATE INDEX IF NOT EXISTS cases_idx ON cases (day)
+CREATE INDEX IF NOT EXISTS cases_idx ON cases (day);
 '''
 
 INSERT_COUNTRY = '''
 INSERT INTO country (name) VALUES (%s) ON CONFLICT DO NOTHING;
 '''
+
 INSERT_DUMMY_COUNTRY = '''
 INSERT INTO country (id, name) VALUES (0, null) ON CONFLICT DO NOTHING;
 '''
+
 INSERT_SUBDIVISION = '''
 INSERT INTO subdivision (name, country) VALUES (%s, %s) ON CONFLICT DO NOTHING;
 '''
-INSERT_DUMMY_SUBDIVISION = 'INSERT INTO subdivision (id, name, country) VALUES (0, null, 0) ON CONFLICT DO NOTHING'
+
+INSERT_DUMMY_SUBDIVISION = 'INSERT INTO subdivision (id, name, country) VALUES (0, null, 0) ON CONFLICT DO NOTHING;'
+
+INSERT_COUNTY = '''
+INSERT INTO county (name, subdivision) VALUES (%s, %s) ON CONFLICT DO NOTHING;
+'''
+
+INSERT_DUMMY_COUNTY = 'INSERT INTO county (id, name, subdivision) VALUES (0, null, 0) ON CONFLICT DO NOTHING;'
+
 GET_COUNTRY = '''
 SELECT * FROM country WHERE name = %s;
 '''
+
 GET_SUBDIVISION = '''
 SELECT * FROM subdivision WHERE name = %s;
 '''
-INSERT_CASES = '''
-INSERT INTO cases (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+
+GET_COUNTY = '''
+SELECT * FROM county WHERE name = %s;
 '''
+
+INSERT_CASES = '''
+INSERT INTO cases (
+    day, country, subdivision, county, positive_cases, deaths, recovered
+) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+'''
+
 INCREMENT_CASES = '''
 INSERT INTO cases 
-    (day, country, subdivision, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s) 
-    ON CONFLICT (day, country, subdivision) DO UPDATE SET 
+    (day, country, subdivision, county, positive_cases, deaths, recovered) VALUES (%s, %s, %s, %s, %s, %s, %s) 
+    ON CONFLICT (day, country, subdivision, county) DO UPDATE SET 
         positive_cases = cases.positive_cases + EXCLUDED.positive_cases,
         deaths = cases.deaths + EXCLUDED.deaths,
         recovered = cases.recovered + EXCLUDED.recovered;
 '''
+
 TRACKED_DATES_TABLE = '''
 CREATE TABLE IF NOT EXISTS tracked_dates (
     id SERIAL PRIMARY KEY,
@@ -123,6 +114,7 @@ CREATE TABLE IF NOT EXISTS tracked_dates (
     UNIQUE (day)
 );
 '''
+
 INSERT_TRACKED_DATE = '''
 INSERT INTO tracked_dates (day) VALUES (%s) ON CONFLICT DO NOTHING;
 '''
@@ -133,9 +125,12 @@ cur = conn.cursor()
 cur.execute(CREATE_COUNTRY_TABLE)
 cur.execute(CREATE_SUBDIVISION_TABLE)
 cur.execute(CREATE_SUBDIVISION_INDEX)
+cur.execute(CREATE_COUNTY_TABLE)
+cur.execute(CREATE_COUNTY_INDEX)
 cur.execute(CREATE_COUNTRY_INDEX)
 cur.execute(INSERT_DUMMY_COUNTRY)
 cur.execute(INSERT_DUMMY_SUBDIVISION)
+cur.execute(INSERT_DUMMY_COUNTY)
 cur.execute(CREATE_CASES_TABLE)
 cur.execute(CREATE_CASES_INDEX)
 cur.execute(TRACKED_DATES_TABLE)
@@ -153,39 +148,59 @@ def nan_to_int(val):
         return int(val)
 
 
-for _, row in cases.iterrows():
-    subdivision = row['Province/State']
-    country = row['Country/Region']
-    increment_counter = False
-    # fucking pandas
-    if not isinstance(subdivision, float):
+def insert_ts_row(row, us=False, deaths=deaths, recovered=recovered):
+    if us:
+        province_state = 'Province_State'
+        country_region = 'Country_Region'
+        county_col_head = 'Admin2'
+    else:
+        province_state = 'Province/State'
+        country_region = 'Country/Region'
+        county_col_head = None
+    
+    subdivision = row[province_state]
+    country = row[country_region]
+    if us:
+        county = row[county_col_head]
+    else:
+        if country == 'US':
+            return
+        county = None
 
-        deaths_df = deaths.loc[(deaths['Province/State'] == subdivision) & (deaths['Country/Region'] == country)]
-        recovered_df = recovered.loc[(recovered['Province/State'] == subdivision) & (recovered['Country/Region'] == country)]
+    if not isinstance(subdivision, float):
+        deaths_df = deaths.loc[(deaths[province_state] == subdivision) & (deaths[country_region] == country)]
+        if isinstance(recovered, DataFrame):
+            recovered_df = recovered.loc[(recovered[province_state] == subdivision) & (recovered[country_region] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         subdivision = subdivision.strip()
 
         conn.commit()
-        if subdivision[-2:] in COUNTY_SUFFIXES:
-            sd = subdivision[-2:]
-            subdivision = COUNTY_SUFFIXES[sd]
-            increment_counter = True
         cur.execute(GET_COUNTRY, [country])
         country_id, _ = cur.fetchone()
-        if not increment_counter:
-            cur.execute(INSERT_SUBDIVISION, (subdivision, country_id))
         conn.commit()
+        cur.execute(INSERT_SUBDIVISION, [subdivision, country_id])
         cur.execute(GET_SUBDIVISION, [subdivision])
         subdivision_id, _, _ = cur.fetchone()
+        if us and not isinstance(county, float):
+            cur.execute(INSERT_COUNTY, [county, subdivision_id])
+            conn.commit()
+            cur.execute(GET_COUNTY, [county])
+            county_id, _, _ = cur.fetchone()
+            deaths_df = deaths_df.loc[deaths_df[county_col_head] == county]
+        else:
+            county_id = 0
+
     else:
-        deaths_df = deaths.loc[(deaths['Province/State'].isnull()) & (deaths['Country/Region'] == country)]
-        recovered_df = recovered.loc[(recovered['Province/State'].isnull()) & (recovered['Country/Region'] == country)]
+        deaths_df = deaths.loc[(deaths[province_state].isnull()) & (deaths[country_region] == country)]
+        if isinstance(recovered, DataFrame):
+            recovered_df = recovered.loc[(recovered[province_state].isnull()) & (recovered[country_region] == country)]
         cur.execute(INSERT_COUNTRY, (country,))
         conn.commit()
         cur.execute(GET_COUNTRY, [country])
         country_id, _ = cur.fetchone()
 
         subdivision_id = 0  # dummy subdivision for unique constraint
+        county_id = 0
 
     for date in dates:
         exclude_recoveries = False
@@ -195,36 +210,39 @@ for _, row in cases.iterrows():
             continue
         cases_date = row[date]
         deaths_date = deaths_df.iloc[0][date]
-        try:
-            # some countries don't have subdivision recoveries data -- we ignore these countries for now
-            recovered_date = recovered_df.iloc[0][date]
-        except:            
+        if isinstance(recovered, DataFrame):
+            try:
+                # some countries don't have subdivision recoveries data -- we ignore these countries for now
+                recovered_date = recovered_df.iloc[0][date]
+            except:            
+                exclude_recoveries = True
+        else:
             exclude_recoveries = True
         if cases_date is np.nan:
             continue  # no data for this day (yet?) -- allowing other numbers to be nan, but not this one
-        if not increment_counter:
-            cur.execute(
-                INSERT_CASES, (
-                    date, 
-                    country_id, 
-                    subdivision_id, 
-                    nan_to_int(cases_date), 
-                    nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date) if not exclude_recoveries else 0
-                )
+        cur.execute(
+            INSERT_CASES, (
+                date, 
+                country_id, 
+                subdivision_id,
+                county_id,
+                nan_to_int(cases_date), 
+                nan_to_int(deaths_date), 
+                nan_to_int(recovered_date) if not exclude_recoveries else 0
             )
-        else:
-            cur.execute(
-                INCREMENT_CASES, (
-                    date, 
-                    country_id, 
-                    subdivision_id, 
-                    nan_to_int(cases_date), 
-                    nan_to_int(deaths_date), 
-                    nan_to_int(recovered_date) if not exclude_recoveries else 0
-                )
-            )
+        )
         conn.commit()
+
+
+for _, row in cases.iterrows():
+    insert_ts_row(row)
+
+cases = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv')
+deaths = pd.read_csv('../COVID-19/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv')
+for _, row in cases.iterrows():
+    dates = cases.columns[11:]
+    insert_ts_row(row, us=True, deaths=deaths, recovered=None)
+
 
 for date in dates:
     cur.execute(INSERT_TRACKED_DATE, [date])
