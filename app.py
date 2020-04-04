@@ -207,6 +207,16 @@ def update_county_dropdown(county=0):
 
 
 @app.callback(
+    dash.dependencies.Output('county-dropdown', 'value'),
+    [
+        dash.dependencies.Input('subdivision-dropdown', 'value')
+    ]
+)
+def reset_county_dropdown(*args, **kwargs):
+    return None
+
+
+@app.callback(
     dash.dependencies.Output('subdivision-dropdown', 'value'),
     [
         dash.dependencies.Input('country-dropdown', 'value')
