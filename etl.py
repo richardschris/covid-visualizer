@@ -89,7 +89,7 @@ SELECT * FROM subdivision WHERE name = %s;
 '''
 
 GET_COUNTY = '''
-SELECT * FROM county WHERE name = %s;
+SELECT * FROM county WHERE name = %s AND subdivision = %s;
 '''
 
 INSERT_CASES = '''
@@ -184,7 +184,7 @@ def insert_ts_row(row, us=False, deaths=deaths, recovered=recovered):
         if us and not isinstance(county, float):
             cur.execute(INSERT_COUNTY, [county, subdivision_id])
             conn.commit()
-            cur.execute(GET_COUNTY, [county])
+            cur.execute(GET_COUNTY, [county, subdivision_id])
             county_id, _, _ = cur.fetchone()
             deaths_df = deaths_df.loc[deaths_df[county_col_head] == county]
         else:
