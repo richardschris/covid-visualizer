@@ -24,7 +24,7 @@ SELECT id, name FROM county where ID > 0 AND subdivision = %s ORDER BY name;
 '''
 
 SELECT_BY_COUNTY_DATA = '''
-SELECT day, positive_cases, deaths, recovered FROM cases WHERE county=%s;
+SELECT day, positive_cases, deaths, recovered FROM cases WHERE county=%s ORDER BY day;
 '''
 
 SELECT_BY_SUBDIVISION_DATA = '''
@@ -37,17 +37,6 @@ SELECT day, sum(positive_cases), sum(deaths), sum(recovered)
 SELECT_BY_COUNTRY_DATA = '''
 SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
     FROM cases a INNER JOIN country b on a.country = b.id WHERE b.id = %s
-    GROUP BY day
-    ORDER BY day;
-'''
-
-# this query doesn't work right now and I'm lazy
-SELECT_NYC = '''
-SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
-    FROM cases a 
-        INNER JOIN subdivision b on a.subdivision = b.id  
-        INNER JOIN county c on c.subdivision = b.id 
-            WHERE c.name IN ('New York', 'Queens', 'Kings', 'Richmond', 'Bronx') AND b.name = 'New York'
     GROUP BY day
     ORDER BY day;
 '''
