@@ -119,6 +119,35 @@ INSERT_TRACKED_DATE = '''
 INSERT INTO tracked_dates (day) VALUES (%s) ON CONFLICT DO NOTHING;
 '''
 
+# Johns Hopkins currently doesn't track data broken out by borough so delete it...
+DELETE_NEW_YORK_BORO_DATA = '''
+DELETE 
+FROM   cases 
+WHERE  cases.county IN 
+       ( 
+                  SELECT     county.id 
+                  FROM       county 
+                  INNER JOIN subdivision 
+                  ON         county.subdivision
+                             = subdivision.id 
+                  WHERE      county.NAME IN ('Queens', 
+                                             'Bronx', 
+                                             'Richmond', 
+                                             'Kings') 
+                  AND        subdivision.NAME='New York');
+'''
+
+DELETE_BOROS = '''
+DELETE FROM county 
+WHERE  county.id IN (SELECT county.id 
+                     FROM   county 
+                            INNER JOIN subdivision 
+                                    ON county.subdivision = subdivision.id 
+                     WHERE  county.NAME IN ( 'Queens', 'Bronx', 'Richmond', 
+                                             'Kings' ) 
+                            AND subdivision.NAME = 'New York'); 
+'''
+
 conn = psycopg2.connect(database='covid')
 cur = conn.cursor()
 
@@ -247,3 +276,7 @@ for _, row in cases.iterrows():
 for date in dates:
     cur.execute(INSERT_TRACKED_DATE, [date])
     conn.commit()
+
+cur.execute(DELETE_NEW_YORK_BORO_DATA)
+cur.execute(DELETE_BOROS)
+conn.commit()
