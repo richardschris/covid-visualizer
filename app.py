@@ -41,6 +41,12 @@ SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) 
     ORDER BY day;
 '''
 
+SELECT_WORLD_DATA = '''
+SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
+    FROM cases
+    GROUP BY day
+    ORDER BY day;
+'''
 
 def get_default_country():
     cur.execute(DEFAULT_COUNTRY)
@@ -61,7 +67,10 @@ def prepare_graph(cases):
 
 
 def get_country_data(country=99):
-    cur.execute(SELECT_BY_COUNTRY_DATA, [country])
+    if country == 0:
+        cur.execute(SELECT_WORLD_DATA)
+    else:
+        cur.execute(SELECT_BY_COUNTRY_DATA, [country])
     cases = cur.fetchall()
     return prepare_graph(cases)
 
@@ -95,10 +104,7 @@ def get_subdivision_data(subdivision):
 
 
 def get_county_data(county):
-    if county == 9000:
-        cur.execute(SELECT_NYC)
-    else:
-        cur.execute(SELECT_BY_COUNTY_DATA, [county])
+    cur.execute(SELECT_BY_COUNTY_DATA, [county])
     cases = cur.fetchall()
     return prepare_graph(cases)
 
@@ -119,9 +125,11 @@ def populate_graph_data(data):
 
 def get_countries():
     cur.execute(COUNTRIES)
-    return [
+    countries = [
         {'label': label, 'value': value} for value, label in cur.fetchall()
     ]
+    countries.extend([{'label': 'World', 'value': 0}])
+    return countries
      
 
 footer = [
