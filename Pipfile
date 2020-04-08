@@ -11,6 +11,7 @@ ipython = "*"
 psycopg2 = "*"
 dash = "*"
 gunicorn = "*"
+dash-daq = "*"
 
 [requires]
 python_version = "3.6"

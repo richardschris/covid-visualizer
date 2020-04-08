@@ -1,6 +1,7 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
+import dash_daq
 import psycopg2
 
 conn = psycopg2.connect(database='covid')
@@ -109,7 +110,7 @@ def get_county_data(county):
     return prepare_graph(cases)
 
 
-def populate_graph_data(data):
+def populate_graph_data(data, plot_type):
     cases_y = [day['cases'] for day in data]
     deaths_y = [day['deaths'] for day in data]
     recovered_y = [day['recovered'] for day in data]
@@ -120,7 +121,10 @@ def populate_graph_data(data):
                 {'x': x, 'y': deaths_y, 'type': 'line', 'name': 'Deaths'},
                 {'x': x, 'y': recovered_y, 'type': 'line', 'name': 'Recovered'}
             ],
+        'layout': {
+            'yaxis': {'type': plot_type}
         }
+    }
 
 
 def get_countries():
@@ -142,7 +146,7 @@ footer = [
 ]
 
 data = get_country_data()
-graph_data = populate_graph_data(data)
+graph_data = populate_graph_data(data, 'linear')
 app.title = 'COVID-19 Charts'
 
 app.layout = html.Div(children=[
@@ -164,6 +168,11 @@ app.layout = html.Div(children=[
         value=None,
         placeholder='County (US only)'
     ),
+    dash_daq.ToggleSwitch(
+        id='plot-type-button',
+        value=False,
+        label='Log Plot?'
+    ),
     dcc.Graph(
         id='covid-graph',
         figure=graph_data
@@ -177,10 +186,11 @@ app.layout = html.Div(children=[
     [
         dash.dependencies.Input('country-dropdown', 'value'),
         dash.dependencies.Input('subdivision-dropdown', 'value'),
-        dash.dependencies.Input('county-dropdown', 'value')
+        dash.dependencies.Input('county-dropdown', 'value'),
+        dash.dependencies.Input('plot-type-button', 'value')
     ]
 )
-def update_graph(country=100, subdivision=None, county=None):
+def update_graph(country=100, subdivision=None, county=None, log_plot=False):
     if subdivision:
         if county:
             data = get_county_data(county)
@@ -188,7 +198,11 @@ def update_graph(country=100, subdivision=None, county=None):
             data = get_subdivision_data(subdivision)
     else:
         data = get_country_data(country)
-    graph_data = populate_graph_data(data)
+    plot_types = {
+        False: 'linear',
+        True: 'log'
+    }
+    graph_data = populate_graph_data(data, plot_types[log_plot])
     return graph_data
 
 
