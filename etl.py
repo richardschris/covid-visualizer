@@ -124,17 +124,17 @@ DELETE_NEW_YORK_BORO_DATA = '''
 DELETE 
 FROM   cases 
 WHERE  cases.county IN 
-       ( 
-                  SELECT     county.id 
-                  FROM       county 
-                  INNER JOIN subdivision 
-                  ON         county.subdivision
-                             = subdivision.id 
-                  WHERE      county.NAME IN ('Queens', 
-                                             'Bronx', 
-                                             'Richmond', 
-                                             'Kings') 
-                  AND        subdivision.NAME='New York');
+    ( 
+        SELECT     county.id 
+        FROM       county 
+        INNER JOIN subdivision 
+        ON         county.subdivision
+                    = subdivision.id 
+        WHERE      county.NAME IN ('Queens', 
+                                    'Bronx', 
+                                    'Richmond', 
+                                    'Kings') 
+        AND        subdivision.NAME='New York');
 '''
 
 DELETE_BOROS = '''
@@ -146,6 +146,90 @@ WHERE  county.id IN (SELECT county.id
                      WHERE  county.NAME IN ( 'Queens', 'Bronx', 'Richmond', 
                                              'Kings' ) 
                             AND subdivision.NAME = 'New York'); 
+'''
+
+COUNTRY_MOVING_AVERAGES_VIEW = '''
+CREATE OR REPLACE VIEW view_moving_averages_country AS (SELECT day,
+       Avg(cases)
+         over (
+           PARTITION BY country
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       cases,
+       Avg(deaths)
+         over (
+           PARTITION BY country
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       deaths,
+       Avg(recovered)
+         over (
+           PARTITION BY country
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       recovered,
+       country AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               country AS country
+        FROM   cases
+        GROUP  BY country, day
+        ORDER  BY country, day) AS cases); 
+'''
+
+SUBDIVISION_MOVING_AVERAGES_VIEW = '''
+CREATE OR REPLACE VIEW view_moving_averages_subdivision AS (SELECT day,
+       Avg(cases)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       cases,
+       Avg(deaths)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       deaths,
+       Avg(recovered)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       recovered,
+       subdivision AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               subdivision AS subdivision
+        FROM   cases
+        GROUP  BY subdivision, day
+        ORDER  BY subdivision, day) AS cases); 
+'''
+
+COUNTY_MOVING_AVERAGES_VIEW = '''
+CREATE OR REPLACE VIEW view_moving_averages_county AS (SELECT day,
+       Avg(cases)
+         over (
+           PARTITION BY county
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       cases,
+       Avg(deaths)
+         over (
+           PARTITION BY county
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       deaths,
+       Avg(recovered)
+         over (
+           PARTITION BY county
+           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+       recovered,
+       county AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               county AS county
+        FROM   cases
+        GROUP  BY county, day
+        ORDER  BY county, day) AS cases); 
 '''
 
 conn = psycopg2.connect(database='covid')
@@ -163,6 +247,9 @@ cur.execute(INSERT_DUMMY_COUNTY)
 cur.execute(CREATE_CASES_TABLE)
 cur.execute(CREATE_CASES_INDEX)
 cur.execute(TRACKED_DATES_TABLE)
+cur.execute(COUNTRY_MOVING_AVERAGES_VIEW)
+cur.execute(SUBDIVISION_MOVING_AVERAGES_VIEW)
+cur.execute(COUNTY_MOVING_AVERAGES_VIEW)
 conn.commit()
 
 

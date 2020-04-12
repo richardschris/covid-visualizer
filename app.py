@@ -3,6 +3,8 @@ import dash_core_components as dcc
 import dash_html_components as html
 import dash_daq
 import psycopg2
+from psycopg2.extensions import AsIs
+
 
 conn = psycopg2.connect(database='covid')
 cur = conn.cursor()
@@ -49,6 +51,14 @@ SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) 
     ORDER BY day;
 '''
 
+SELECT_ROLLING_AVERAGE = '''
+SELECT day, sum(cases) AS cases, sum(deaths) AS deaths, sum(recovered) AS recovered
+    FROM %(table)s
+    WHERE ref_id=%(ref_id)s
+    GROUP BY day
+    ORDER BY day;
+'''
+
 def get_default_country():
     cur.execute(DEFAULT_COUNTRY)
     return cur.fetchone()[0]
@@ -67,11 +77,23 @@ def prepare_graph(cases):
     return data
 
 
-def get_country_data(country=99):
+def get_rolling_average_data(table_type='country', ref_id=None):
+    tables = {
+        'country': 'view_moving_averages_country',
+        'subdivision': 'view_moving_averages_subdivision',
+        'county': 'view_moving_averages_county',
+    }
+    table_name = tables[table_type]
+    cur.execute(SELECT_ROLLING_AVERAGE, {'table': AsIs(table_name), 'ref_id': ref_id})
+
+
+def get_country_data(country, plot_type):
     if country == 0:
         cur.execute(SELECT_WORLD_DATA)
-    else:
+    elif plot_type != 'moving-average':
         cur.execute(SELECT_BY_COUNTRY_DATA, [country])
+    else:
+        get_rolling_average_data(table_type='country', ref_id=country)
     cases = cur.fetchall()
     return prepare_graph(cases)
 
@@ -98,19 +120,25 @@ def get_counties(subdivision=None):
     return [{'label': label, 'value': value} for value, label in choices]
 
 
-def get_subdivision_data(subdivision):
-    cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
+def get_subdivision_data(subdivision, plot_type):
+    if plot_type != 'moving-average':
+        cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
+    else:
+        get_rolling_average_data(table_type='subdivision', ref_id=subdivision)
     cases = cur.fetchall()
     return prepare_graph(cases)
 
 
-def get_county_data(county):
-    cur.execute(SELECT_BY_COUNTY_DATA, [county])
+def get_county_data(county, plot_type):
+    if plot_type != 'moving-average':
+        cur.execute(SELECT_BY_COUNTY_DATA, [county])
+    else:
+        get_rolling_average_data(table_type='county', ref_id=county)
     cases = cur.fetchall()
     return prepare_graph(cases)
 
 
-def populate_graph_data(data, plot_type):
+def populate_graph_data(data, axis_type):
     cases_y = [day['cases'] for day in data]
     deaths_y = [day['deaths'] for day in data]
     recovered_y = [day['recovered'] for day in data]
@@ -122,7 +150,7 @@ def populate_graph_data(data, plot_type):
                 {'x': x, 'y': recovered_y, 'type': 'line', 'name': 'Recovered'}
             ],
         'layout': {
-            'yaxis': {'type': plot_type}
+            'yaxis': {'type': axis_type}
         }
     }
 
@@ -145,9 +173,15 @@ footer = [
     html.A(href='https://plot.ly/dash/', children='Dash.')
 ]
 
-data = get_country_data()
+data = get_country_data(get_default_country(), 'linear')
 graph_data = populate_graph_data(data, 'linear')
 app.title = 'COVID-19 Charts'
+
+plot_types = [
+    {'value': 'linear', 'label': 'Linear'},
+    {'value': 'log', 'label': 'Log'},
+    {'value': 'moving-average', 'label': '3-Day Moving Average'}
+]
 
 app.layout = html.Div(children=[
     html.H1(children='COVID-19 Cases'),
@@ -168,10 +202,11 @@ app.layout = html.Div(children=[
         value=None,
         placeholder='County (US only)'
     ),
-    dash_daq.ToggleSwitch(
+    dcc.Dropdown(
         id='plot-type-button',
-        value=False,
-        label='Log Plot?'
+        options=plot_types,
+        value='linear',
+        placeholder='Plot Type'
     ),
     dcc.Graph(
         id='covid-graph',
@@ -190,19 +225,21 @@ app.layout = html.Div(children=[
         dash.dependencies.Input('plot-type-button', 'value')
     ]
 )
-def update_graph(country=100, subdivision=None, county=None, log_plot=False):
+def update_graph(country=None, subdivision=None, county=None, plot_type='linear'):
     if subdivision:
         if county:
-            data = get_county_data(county)
+            data = get_county_data(county, plot_type)
         else:
-            data = get_subdivision_data(subdivision)
+            data = get_subdivision_data(subdivision, plot_type)
     else:
-        data = get_country_data(country)
-    plot_types = {
-        False: 'linear',
-        True: 'log'
+        data = get_country_data(country, plot_type)
+
+    axis_types = {
+        'linear': 'linear',
+        'log': 'log',
+        'moving-average': 'linear'
     }
-    graph_data = populate_graph_data(data, plot_types[log_plot])
+    graph_data = populate_graph_data(data, axis_type=axis_types[plot_type])
     return graph_data
 
 
