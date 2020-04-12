@@ -46,13 +46,21 @@ SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) 
 
 SELECT_WORLD_DATA = '''
 SELECT day, sum(positive_cases) as cases, sum(deaths) as deaths, sum(recovered) as recovered
-    FROM cases
+    FROM %(table)s
     GROUP BY day
     ORDER BY day;
 '''
 
 SELECT_ROLLING_AVERAGE = '''
-SELECT day, sum(cases) AS cases, sum(deaths) AS deaths, sum(recovered) AS recovered
+SELECT day, sum(positive_cases) AS cases, sum(deaths) AS deaths, sum(recovered) AS recovered
+    FROM %(table)s
+    WHERE ref_id=%(ref_id)s
+    GROUP BY day
+    ORDER BY day;
+'''
+
+SELECT_DERIVATIVE = '''
+SELECT day, sum(positive_cases) AS cases, sum(deaths) AS deaths, sum(recovered) AS recovered
     FROM %(table)s
     WHERE ref_id=%(ref_id)s
     GROUP BY day
@@ -87,13 +95,31 @@ def get_rolling_average_data(table_type='country', ref_id=None):
     cur.execute(SELECT_ROLLING_AVERAGE, {'table': AsIs(table_name), 'ref_id': ref_id})
 
 
+def get_derivative_data(table_type='country', ref_id=None):
+    tables = {
+        'country': 'view_derivative_country',
+        'subdivision': 'view_derivative_subdivision',
+        'county': 'view_derivative_county',
+    }
+    table_name = tables[table_type]
+    cur.execute(SELECT_ROLLING_AVERAGE, {'table': AsIs(table_name), 'ref_id': ref_id})
+
+
 def get_country_data(country, plot_type):
     if country == 0:
-        cur.execute(SELECT_WORLD_DATA)
-    elif plot_type != 'moving-average':
-        cur.execute(SELECT_BY_COUNTRY_DATA, [country])
-    else:
+        if plot_type == 'moving-average':
+            table_name = 'view_moving_averages_country'
+        elif plot_type == 'derivative':
+            table_name = 'view_derivative_country'
+        else:
+            table_name = 'cases'
+        cur.execute(SELECT_WORLD_DATA, {'table': AsIs(table_name)})
+    elif plot_type == 'moving-average':
         get_rolling_average_data(table_type='country', ref_id=country)
+    elif plot_type == 'derivative':
+        get_derivative_data(table_type='country', ref_id=country)
+    else:
+        cur.execute(SELECT_BY_COUNTRY_DATA, [country])
     cases = cur.fetchall()
     return prepare_graph(cases)
 
@@ -121,19 +147,23 @@ def get_counties(subdivision=None):
 
 
 def get_subdivision_data(subdivision, plot_type):
-    if plot_type != 'moving-average':
-        cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
+    if plot_type == 'moving-average':
+        get_rolling_average_data(table_type='subdivision', ref_id=subdivision)    
+    elif plot_type == 'derivative':
+        get_derivative_data(table_type='subdivision', ref_id=subdivision)
     else:
-        get_rolling_average_data(table_type='subdivision', ref_id=subdivision)
+        cur.execute(SELECT_BY_SUBDIVISION_DATA, [subdivision])
     cases = cur.fetchall()
     return prepare_graph(cases)
 
 
 def get_county_data(county, plot_type):
-    if plot_type != 'moving-average':
-        cur.execute(SELECT_BY_COUNTY_DATA, [county])
-    else:
+    if plot_type == 'moving-average':
         get_rolling_average_data(table_type='county', ref_id=county)
+    elif plot_type == 'derivative':
+        get_derivative_data(table_type='county', ref_id=county)
+    else:
+        cur.execute(SELECT_BY_COUNTY_DATA, [county])
     cases = cur.fetchall()
     return prepare_graph(cases)
 
@@ -180,7 +210,8 @@ app.title = 'COVID-19 Charts'
 plot_types = [
     {'value': 'linear', 'label': 'Linear'},
     {'value': 'log', 'label': 'Log'},
-    {'value': 'moving-average', 'label': '3-Day Moving Average'}
+    {'value': 'moving-average', 'label': '3-Day Moving Average'},
+    {'value': 'derivative', 'label': 'Derivative'}
 ]
 
 app.layout = html.Div(children=[
@@ -237,7 +268,8 @@ def update_graph(country=None, subdivision=None, county=None, plot_type='linear'
     axis_types = {
         'linear': 'linear',
         'log': 'log',
-        'moving-average': 'linear'
+        'moving-average': 'linear',
+        'derivative': 'linear'
     }
     graph_data = populate_graph_data(data, axis_type=axis_types[plot_type])
     return graph_data

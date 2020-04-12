@@ -150,11 +150,11 @@ WHERE  county.id IN (SELECT county.id
 
 COUNTRY_MOVING_AVERAGES_VIEW = '''
 CREATE OR REPLACE VIEW view_moving_averages_country AS (SELECT day,
-       Avg(cases)
+       Avg(positive_cases)
          over (
            PARTITION BY country
            ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
-       cases,
+       positive_cases,
        Avg(deaths)
          over (
            PARTITION BY country
@@ -167,7 +167,7 @@ CREATE OR REPLACE VIEW view_moving_averages_country AS (SELECT day,
        recovered,
        country AS ref_id
 FROM   (SELECT day,
-               SUM(positive_cases) AS cases,
+               SUM(positive_cases) AS positive_cases,
                SUM(deaths)         AS deaths,
                SUM(recovered)      AS recovered,
                country AS country
@@ -178,11 +178,11 @@ FROM   (SELECT day,
 
 SUBDIVISION_MOVING_AVERAGES_VIEW = '''
 CREATE OR REPLACE VIEW view_moving_averages_subdivision AS (SELECT day,
-       Avg(cases)
+       Avg(positive_cases)
          over (
            PARTITION BY subdivision
            ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
-       cases,
+       positive_cases,
        Avg(deaths)
          over (
            PARTITION BY subdivision
@@ -195,7 +195,7 @@ CREATE OR REPLACE VIEW view_moving_averages_subdivision AS (SELECT day,
        recovered,
        subdivision AS ref_id
 FROM   (SELECT day,
-               SUM(positive_cases) AS cases,
+               SUM(positive_cases) AS positive_cases,
                SUM(deaths)         AS deaths,
                SUM(recovered)      AS recovered,
                subdivision AS subdivision
@@ -206,11 +206,11 @@ FROM   (SELECT day,
 
 COUNTY_MOVING_AVERAGES_VIEW = '''
 CREATE OR REPLACE VIEW view_moving_averages_county AS (SELECT day,
-       Avg(cases)
+       Avg(positive_cases)
          over (
            PARTITION BY county
            ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
-       cases,
+       positive_cases,
        Avg(deaths)
          over (
            PARTITION BY county
@@ -223,7 +223,7 @@ CREATE OR REPLACE VIEW view_moving_averages_county AS (SELECT day,
        recovered,
        county AS ref_id
 FROM   (SELECT day,
-               SUM(positive_cases) AS cases,
+               SUM(positive_cases) AS positive_cases,
                SUM(deaths)         AS deaths,
                SUM(recovered)      AS recovered,
                county AS county
@@ -231,6 +231,88 @@ FROM   (SELECT day,
         GROUP  BY county, day
         ORDER  BY county, day) AS cases); 
 '''
+
+COUNTRY_DERIVATIVE_VIEW = '''
+CREATE OR REPLACE VIEW view_derivative_country AS (SELECT day,
+       positive_cases - lag(positive_cases)
+         over (
+           PARTITION BY country
+           ORDER BY day) :: INTEGER AS
+       positive_cases,
+       deaths - lag(deaths)
+         over (
+           PARTITION BY country
+           ORDER BY day) :: INTEGER AS
+       deaths,
+       recovered - lag(recovered)
+         over (
+           PARTITION BY country
+           ORDER BY day) :: INTEGER AS
+       recovered,
+       country AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS positive_cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               country AS country
+        FROM   cases
+        GROUP  BY country, day) AS cases);
+'''
+
+SUBDIVISION_DERIVATIVE_VIEW = '''
+CREATE OR REPLACE VIEW view_derivative_subdivision AS (SELECT day,
+       positive_cases - lag(positive_cases)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day) :: INTEGER AS
+       positive_cases,
+       deaths - lag(deaths)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day) :: INTEGER AS
+       deaths,
+       recovered - lag(recovered)
+         over (
+           PARTITION BY subdivision
+           ORDER BY day) :: INTEGER AS
+       recovered,
+       subdivision AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS positive_cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               subdivision AS subdivision
+        FROM   cases
+        GROUP  BY subdivision, day) AS cases);
+'''
+
+COUNTY_DERIVATIVE_VIEW = '''
+CREATE OR REPLACE VIEW view_derivative_county AS (SELECT day,
+       positive_cases - lag(positive_cases)
+         over (
+           PARTITION BY county
+           ORDER BY day) :: INTEGER AS
+       positive_cases,
+       deaths - lag(deaths)
+         over (
+           PARTITION BY county
+           ORDER BY day) :: INTEGER AS
+       deaths,
+       recovered - lag(recovered)
+         over (
+           PARTITION BY county
+           ORDER BY day) :: INTEGER AS
+       recovered,
+       county AS ref_id
+FROM   (SELECT day,
+               SUM(positive_cases) AS positive_cases,
+               SUM(deaths)         AS deaths,
+               SUM(recovered)      AS recovered,
+               county AS county
+        FROM   cases
+        GROUP  BY county, day) AS cases);
+'''
+
 
 conn = psycopg2.connect(database='covid')
 cur = conn.cursor()
@@ -250,6 +332,9 @@ cur.execute(TRACKED_DATES_TABLE)
 cur.execute(COUNTRY_MOVING_AVERAGES_VIEW)
 cur.execute(SUBDIVISION_MOVING_AVERAGES_VIEW)
 cur.execute(COUNTY_MOVING_AVERAGES_VIEW)
+cur.execute(COUNTRY_DERIVATIVE_VIEW)
+cur.execute(SUBDIVISION_DERIVATIVE_VIEW)
+cur.execute(COUNTY_DERIVATIVE_VIEW)
 conn.commit()
 
 
