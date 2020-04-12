@@ -153,17 +153,17 @@ CREATE OR REPLACE VIEW view_moving_averages_country AS (SELECT day,
        Avg(cases)
          over (
            PARTITION BY country
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        cases,
        Avg(deaths)
          over (
            PARTITION BY country
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        deaths,
        Avg(recovered)
          over (
            PARTITION BY country
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        recovered,
        country AS ref_id
 FROM   (SELECT day,
@@ -181,17 +181,17 @@ CREATE OR REPLACE VIEW view_moving_averages_subdivision AS (SELECT day,
        Avg(cases)
          over (
            PARTITION BY subdivision
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        cases,
        Avg(deaths)
          over (
            PARTITION BY subdivision
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        deaths,
        Avg(recovered)
          over (
            PARTITION BY subdivision
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        recovered,
        subdivision AS ref_id
 FROM   (SELECT day,
@@ -209,17 +209,17 @@ CREATE OR REPLACE VIEW view_moving_averages_county AS (SELECT day,
        Avg(cases)
          over (
            PARTITION BY county
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        cases,
        Avg(deaths)
          over (
            PARTITION BY county
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        deaths,
        Avg(recovered)
          over (
            PARTITION BY county
-           ORDER BY day ROWS BETWEEN 3 preceding AND CURRENT ROW) :: INTEGER AS
+           ORDER BY day ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) :: INTEGER AS
        recovered,
        county AS ref_id
 FROM   (SELECT day,
