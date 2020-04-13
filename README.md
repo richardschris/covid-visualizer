@@ -6,12 +6,12 @@ This app fills a gap in what I've seen of publicly available COVID-19 data. From
 
 The charts are only as good as their sources. I rely entirely on the Johns Hopkins dataset, but there are snags in that dataset. To wit,
 
-1. Sometimes, columns are empty. That's ok. If the Confirmed dataset has an empty column I skip that day. Otherwise, return a 0 for the Deaths and Recovered values. If the chart looks weird, let me know, that's likely the reason.
-2. National values are an aggregate of state or province level values, where applicable. There are dataset caveats: Washington  once reported by county, as well as the state total. I now add that to the ETL for the state level where applicable.
-3. Data updates at 2AM EDT.
-4. The infrastructure is shoddy as hell. If it falls over, it falls over. If it gets traffic I'll invest time and money there.
+1. There currently (as of 4/12) are some issues with (at least) New York and Serbia data. So while the noble folks at Johns Hopkins are doing their best, errors exist. I'll update the data as that gets fixed.
+2. The derivative view (day-to-day difference) should be taken as a trend over time. The day to day variations don't matter too much, what matters is that those day to day variations add up to a downward slope.
 
 ## Future Goals
 
 1. Better infrastructure. You really don't want to know what it looks like right now.
 2. Allow comparison of country and state values.
+3. Allow more options for visualization (combine moving average and derivative? log derivative?)
+4. Make the ETL process more repeatable and easy to understand. As JHU has changed their data, so has the ETL changed in response, but it's complicated and has unnecessary features.
