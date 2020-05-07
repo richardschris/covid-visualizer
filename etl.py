@@ -290,27 +290,27 @@ COUNTY_DERIVATIVE_VIEW = '''
 CREATE OR REPLACE VIEW view_derivative_county AS (SELECT day,
        positive_cases - lag(positive_cases)
          over (
-           PARTITION BY county
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        positive_cases,
        deaths - lag(deaths)
          over (
-           PARTITION BY county
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        deaths,
        recovered - lag(recovered)
          over (
-           PARTITION BY county
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        recovered,
-       county AS ref_id
+       ref_id AS ref_id
 FROM   (SELECT day,
                SUM(positive_cases) AS positive_cases,
                SUM(deaths)         AS deaths,
                SUM(recovered)      AS recovered,
-               county AS county
-        FROM   cases
-        GROUP  BY county, day) AS cases);
+               ref_id AS ref_id
+        FROM   view_moving_averages_county
+        GROUP  BY ref_id, day) AS cases);
 '''
 
 
