@@ -236,54 +236,54 @@ COUNTRY_DERIVATIVE_VIEW = '''
 CREATE OR REPLACE VIEW view_derivative_country AS (SELECT day,
        positive_cases - lag(positive_cases)
          over (
-           PARTITION BY country
+           PARTITION BY ref_idref_id
            ORDER BY day) :: INTEGER AS
        positive_cases,
        deaths - lag(deaths)
          over (
-           PARTITION BY country
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        deaths,
        recovered - lag(recovered)
          over (
-           PARTITION BY country
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        recovered,
-       country AS ref_id
-FROM   (SELECT day,
-               SUM(positive_cases) AS positive_cases,
-               SUM(deaths)         AS deaths,
-               SUM(recovered)      AS recovered,
-               country AS country
-        FROM   cases
-        GROUP  BY country, day) AS cases);
+       ref_id AS ref_id
+    FROM   (SELECT day,
+                SUM(positive_cases) AS positive_cases,
+                SUM(deaths)         AS deaths,
+                SUM(recovered)      AS recovered,
+                ref_id AS ref_id
+            FROM   view_moving_averages_country
+            GROUP  BY ref_id, day) AS cases);
 '''
 
 SUBDIVISION_DERIVATIVE_VIEW = '''
 CREATE OR REPLACE VIEW view_derivative_subdivision AS (SELECT day,
        positive_cases - lag(positive_cases)
          over (
-           PARTITION BY subdivision
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        positive_cases,
        deaths - lag(deaths)
          over (
-           PARTITION BY subdivision
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        deaths,
        recovered - lag(recovered)
          over (
-           PARTITION BY subdivision
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        recovered,
-       subdivision AS ref_id
+       ref_id AS ref_id
 FROM   (SELECT day,
                SUM(positive_cases) AS positive_cases,
                SUM(deaths)         AS deaths,
                SUM(recovered)      AS recovered,
-               subdivision AS subdivision
-        FROM   cases
-        GROUP  BY subdivision, day) AS cases);
+               ref_id AS ref_id
+        FROM   view_moving_averages_subdivision
+        GROUP  BY ref_id, day) AS cases);
 '''
 
 COUNTY_DERIVATIVE_VIEW = '''

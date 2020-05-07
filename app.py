@@ -59,13 +59,6 @@ SELECT day, sum(positive_cases) AS cases, sum(deaths) AS deaths, sum(recovered) 
     ORDER BY day;
 '''
 
-SELECT_DERIVATIVE = '''
-SELECT day, sum(positive_cases) AS cases, sum(deaths) AS deaths, sum(recovered) AS recovered
-    FROM %(table)s
-    WHERE ref_id=%(ref_id)s
-    GROUP BY day
-    ORDER BY day;
-'''
 
 def get_default_country():
     cur.execute(DEFAULT_COUNTRY)
@@ -211,7 +204,7 @@ plot_types = [
     {'value': 'linear', 'label': 'Linear'},
     {'value': 'log', 'label': 'Log'},
     {'value': 'moving-average', 'label': '3-Day Moving Average'},
-    {'value': 'derivative', 'label': 'Derivative'}
+    {'value': 'derivative', 'label': '3-Day Smoothed Discrete Derivative'}
 ]
 
 app.layout = html.Div(children=[
