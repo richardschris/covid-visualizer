@@ -236,7 +236,7 @@ COUNTRY_DERIVATIVE_VIEW = '''
 CREATE OR REPLACE VIEW view_derivative_country AS (SELECT day,
        positive_cases - lag(positive_cases)
          over (
-           PARTITION BY ref_idref_id
+           PARTITION BY ref_id
            ORDER BY day) :: INTEGER AS
        positive_cases,
        deaths - lag(deaths)
