@@ -343,7 +343,7 @@ inconsistent_recovered_subdivision_data_countries = set()
 
 # on 3/18 there were a bunch of NaN values
 def nan_to_int(val):
-    if val is np.nan or isinstance(val, float):
+    if val is np.nan:
         return 0
     else:
         return int(val)
